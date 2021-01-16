@@ -1,0 +1,84 @@
+package main
+
+import (
+	"fmt"
+	"math/rand"
+	"time"
+)
+
+func main() {
+	rand.Seed(time.Now().Unix())
+	sli := []int{8, 2, 1, 9, 5}
+	fmt.Printf("%v\n\n\n", sli)
+	sort(sli, 0, len(sli)-1)
+}
+
+func sort(sli []int, start int, end int) {
+	if start < end {
+		pIndex := partition(sli, start, end)
+		sort(sli, start, pIndex)
+		sort(sli, pIndex+1, end)
+	}
+}
+
+func partition(sli []int, start int, end int) int {
+	pivot := sli[end]
+	pIndex := start - 1
+
+	for index := start; index < end; index++ {
+		val := sli[index]
+
+		fmt.Printf("index = %d | val = %d | pivot = %d\n", index, val, pivot)
+
+		if val < pivot {
+			pIndex++
+			fmt.Printf("increased lowest element from %d to %d ", index-1, index)
+			fmt.Println("")
+			fmt.Printf("lowest element val = %d | current value = %d", sli[pIndex], sli[index])
+			fmt.Println("")
+			sli[index], sli[pIndex] = sli[pIndex], sli[index]
+			fmt.Printf("lowest element val = %d | current value = %d", sli[pIndex], sli[index])
+			fmt.Println("")
+		}
+	}
+
+	fmt.Printf("biggest element val = %d | pivot value = %d\n", sli[end], sli[pIndex+1])
+	sli[end], sli[pIndex+1] = sli[pIndex+1], sli[end]
+	fmt.Printf("biggest element val = %d | pivot value = %d", sli[end], sli[pIndex+1])
+	fmt.Println("")
+	fmt.Printf("array: %v", sli)
+	fmt.Print("\n\n\n")
+
+	return pIndex
+}
+
+/*
+	Store initial value of the partition
+	i = 0
+
+	Main comparison loop - Responsible for swapping elements and updating the partition point:
+		j = 0
+		[8, 9, 3, 4, 5]
+
+		i = 0
+		j = 1
+		[8, 9, 3, 4, 5]
+
+		i = 0
+		j = 2
+		[8, 9, 3, 4, 5]
+		expl: since "i" is smaller than the pivot, swap current element with current parition point and update partition point
+
+
+		i = 1
+		j = 3
+		[3, 9, 8, 4, 5]
+
+		i = 2
+		j = 4
+		[3, 4, 8, 9, 5]
+
+	Final swap, responsible for putting pivot in its right index:
+	(since we haven't touched it because its comparing with < instead of <=)
+		i := 2
+*/

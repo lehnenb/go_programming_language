@@ -1,4 +1,4 @@
-package main
+package client
 
 import (
   "bytes"
@@ -7,6 +7,7 @@ import (
   "fmt"
   "time"
   "github.com/gorilla/websocket"
+  "github.com/lehnenb/go/ws_chat/broadcast"
 )
 
 const (

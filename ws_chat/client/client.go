@@ -7,7 +7,7 @@ import (
   "fmt"
   "time"
   "github.com/gorilla/websocket"
-  "github.com/lehnenb/go/ws_chat/broadcast"
+  "github.com/lehnenb/go_programming_language/ws_chat/broadcast"
 )
 
 const (

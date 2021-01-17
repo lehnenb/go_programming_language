@@ -3,11 +3,10 @@ package client
 import (
   "bytes"
   "log"
-  "net/http"
   "fmt"
   "time"
   "github.com/gorilla/websocket"
-  "github.com/lehnenb/go/ws_chat/broadcast"
+  "github.com/lehnenb/go_programming_language/ws_chat/broadcast"
 )
 
 const (
@@ -25,7 +24,7 @@ const (
 )
 
 var (
-  newline = []byte{'\n'}
+  newLine = []byte{'\n'}
   space   = []byte{' '}
 )
 
@@ -36,23 +35,27 @@ var upgrader = websocket.Upgrader{
 
 // Client represents the connection between an individual user and the broadcast.
 type Client struct {
-  broadcast *Broadcast
+  broadcast *broadcast.Broadcast
 
   // The websocket connection.
   conn *websocket.Conn
-
-  // Buffered channel of outbound messages.
-  send chan []byte
 }
 
-// readPump pumps messages from the websocket connection to the hub.
+func newClient(broadcast *broadcast.Broadcast, conn *websocket.Conn) Client {
+  return Client{
+    broadcast: broadcast,
+    conn: conn,
+  }
+}
+
+// ClientListener sends messages from the websocket connection to the broadcast.
 //
 // The application runs readPump in a per-connection goroutine. The application
 // ensures that there is at most one reader on a connection by executing all
 // reads from this goroutine.
-func (c *Client) readPump() {
+func (c *Client) ClientListener() {
   defer func() {
-    c.hub.unregister <- c
+    c.broadcast.Close()
     c.conn.Close()
   }()
   c.conn.SetReadLimit(maxMessageSize)
@@ -60,25 +63,28 @@ func (c *Client) readPump() {
   c.conn.SetPongHandler(func(string) error {
     c.conn.SetReadDeadline(time.Now().Add(pongWait)); return nil
   })
+
   for {
     _, message, err := c.conn.ReadMessage()
+
     if err != nil {
       if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
         log.Printf("error: %v", err)
       }
       break
     }
-    message = bytes.TrimSpace(bytes.Replace(message, newline, space, -1))
-    c.hub.broadcast <- message
+
+    message = bytes.TrimSpace(bytes.Replace(message, newLine, space, -1))
+    c.broadcast.Publish(string(message))
   }
 }
 
-// writePump pumps messages from the hub to the websocket connection.
+// BroadcastListener pumps messages from the broadcast to the websocket connection.
 //
 // A goroutine running writePump is started for each connection. The
 // application ensures that there is at most one writer to a connection by
 // executing all writes from this goroutine.
-func (c *Client) writePump() {
+func (c *Client) BroadcastListener() {
   ticker := time.NewTicker(pingPeriod)
 
   defer func() {
@@ -88,11 +94,10 @@ func (c *Client) writePump() {
 
   for {
     select {
-    case message, ok := <-c.send:
-
+    case message, ok := <-c.broadcast.PubSub.Channel():
       c.conn.SetWriteDeadline(time.Now().Add(writeWait))
       if !ok {
-        // The hub closed the channel.
+        // The broadcast closed the channel.
         c.conn.WriteMessage(websocket.CloseMessage, []byte{})
         return
       }
@@ -101,16 +106,8 @@ func (c *Client) writePump() {
       if err != nil {
         return
       }
-      w.Write(message)
-      fmt.Println(string(message))
-
-      // Add queued chat messages to the current websocket message.
-      // n := len(c.send)
-      // fmt.Println(len(c.send))
-      // for i := 0; i < n; i++ {
-      //   w.Write(newline)
-      //  w.Write(<-c.send)
-      // }
+      w.Write([]byte(message.String()))
+      fmt.Println(message.String())
 
       if err := w.Close(); err != nil {
         return
@@ -122,22 +119,4 @@ func (c *Client) writePump() {
       }
     }
   }
-}
-
-// serveWs handles websocket requests from the peer.
-func serveWs(broadcast *Broadcast, w http.ResponseWriter, r *http.Request) {
-  conn, err := upgrader.Upgrade(w, r, nil)
-
-  if err != nil {
-    log.Println(err)
-    return
-  }
-
-  client := &Client{broadcast: broadcast, conn: conn, send: make(chan []byte)}
-  client.broadcast.register <- client
-
-  // Allow collection of memory referenced by the caller by doing all work in
-  // new goroutines.
-  go client.writePump()
-  go client.readPump()
 }

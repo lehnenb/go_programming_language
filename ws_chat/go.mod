@@ -1,4 +1,4 @@
-module github.com/lehnenb/ws_chat
+module github.com/lehnenb/go_programming_language/ws_chat
 
 go 1.15
 

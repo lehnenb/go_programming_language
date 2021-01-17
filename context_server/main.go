@@ -21,6 +21,8 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	log.Println(ctx, "handler started")
 	defer log.Println(ctx, "handler ended")
 
+	fmt.Printf("value for foo is %v", ctx.Value("foo"))
+
 	select {
 	case <-time.After(5 * time.Second):
 		fmt.Fprintln(w, "hello welt")

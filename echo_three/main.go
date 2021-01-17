@@ -1,13 +1,14 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"strings"
 )
 
 // Echo prints CLI arguments
 func Echo(args []string) {
-	println(strings.Join(args[1:], " "))
+	fmt.Println(strings.Join(args[1:], " "))
 }
 
 func main() {

@@ -4,11 +4,14 @@ import (
 	"flag"
 	"log"
 	"net/http"
-  "time"
+
 	"github.com/go-redis/redis/v8"
+	"github.com/lehnenb/go_programming_language/ws_chat/broadcast"
+	"github.com/lehnenb/go_programming_language/ws_chat/client"
 )
 
-var server  *http.Server
+var defaultBroadcast *broadcast.Broadcast
+var redisClient *redis.Client
 var addr = flag.String("addr", ":8080", "http service address")
 
 func serveHome(w http.ResponseWriter, r *http.Request) {
@@ -29,31 +32,28 @@ func serveHome(w http.ResponseWriter, r *http.Request) {
 
 
 func init() {
-  server = &http.Server{
-    Addr:         "0.0.0.0:3000",
-    WriteTimeout: time.Second * 15,
-    ReadTimeout:  time.Second * 15,
-    IdleTimeout:  time.Second * 60,
-    redisClient: redis.NewClient(&redis.Options{
-      Addr: "localhost:6379",
-      Password: "",
-      DB: 0,
-    }),
-    Handler: app,
-  }
+  redisClient = redis.NewClient(&redis.Options{
+    Addr: "localhost:6379",
+    Password: "",
+    DB: 0,
+  })
+
+  defaultBroadcast = broadcast.NewBroadcast("testarossa", redisClient)
 }
 
 func main() {
   flag.Parse()
 
+  go defaultBroadcast.ListenToBroadcast()
+
   http.HandleFunc("/", serveHome)
 
   http.HandleFunc("/broadcast", func(w http.ResponseWriter, r *http.Request) {
-    createBroadcast(w, r)
+    // createBroadcast(w, r)
   })
 
   http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-    serveClient(hub, w, r)
+    client.ServeClient(defaultBroadcast, w, r)
   })
 
   err := http.ListenAndServe(*addr, nil)

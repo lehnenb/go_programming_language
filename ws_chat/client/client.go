@@ -1,12 +1,11 @@
 package client
 
 import (
-  "bytes"
-  "log"
-  "fmt"
-  "time"
-  "github.com/gorilla/websocket"
-  "github.com/lehnenb/go_programming_language/ws_chat/broadcast"
+	"bytes"
+	"log"
+	"time"
+	"github.com/go-redis/redis/v8"
+	"github.com/gorilla/websocket"
 )
 
 const (
@@ -24,7 +23,7 @@ const (
 )
 
 var (
-  newLine = []byte{'\n'}
+  newline = []byte{'\n'}
   space   = []byte{' '}
 )
 
@@ -33,29 +32,36 @@ var upgrader = websocket.Upgrader{
   WriteBufferSize: 1024,
 }
 
+type genericBroadcast interface {
+  Publish(msg string) error
+  RegisterClient(cli *Client) error
+  UnregisterClient(cli *Client) error
+}
+
 // Client represents the connection between an individual user and the broadcast.
 type Client struct {
-  broadcast *broadcast.Broadcast
-
+  broadcast genericBroadcast
+  // Redis PubSub connection
+  PubSub *redis.PubSub
   // The websocket connection.
   conn *websocket.Conn
+  // channel receiving messages from the broadcast to the client
+  writeCh chan []byte
 }
 
-func newClient(broadcast *broadcast.Broadcast, conn *websocket.Conn) Client {
-  return Client{
-    broadcast: broadcast,
-    conn: conn,
-  }
+// Write writes message from broadcast to the client
+func (c *Client) Write(msg []byte) {
+  c.writeCh <- msg
 }
 
-// ClientListener sends messages from the websocket connection to the broadcast.
+// readPump pumps messages from the websocket connection to the broadcast.
 //
 // The application runs readPump in a per-connection goroutine. The application
 // ensures that there is at most one reader on a connection by executing all
 // reads from this goroutine.
-func (c *Client) ClientListener() {
+func (c *Client) readPump() {
   defer func() {
-    c.broadcast.Close()
+    c.broadcast.UnregisterClient(c)
     c.conn.Close()
   }()
   c.conn.SetReadLimit(maxMessageSize)
@@ -63,28 +69,26 @@ func (c *Client) ClientListener() {
   c.conn.SetPongHandler(func(string) error {
     c.conn.SetReadDeadline(time.Now().Add(pongWait)); return nil
   })
-
   for {
     _, message, err := c.conn.ReadMessage()
-
     if err != nil {
       if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
         log.Printf("error: %v", err)
       }
       break
     }
-
-    message = bytes.TrimSpace(bytes.Replace(message, newLine, space, -1))
+    message = bytes.TrimSpace(bytes.Replace(message, newline, space, -1))
     c.broadcast.Publish(string(message))
   }
 }
 
-// BroadcastListener pumps messages from the broadcast to the websocket connection.
+// writePump pumps messages from the hub to the websocket connection.
 //
 // A goroutine running writePump is started for each connection. The
 // application ensures that there is at most one writer to a connection by
 // executing all writes from this goroutine.
-func (c *Client) BroadcastListener() {
+func (c *Client) writePump() {
+  msgCh := c.writeCh
   ticker := time.NewTicker(pingPeriod)
 
   defer func() {
@@ -94,10 +98,10 @@ func (c *Client) BroadcastListener() {
 
   for {
     select {
-    case message, ok := <-c.broadcast.PubSub.Channel():
+    case message, ok := <-msgCh:
       c.conn.SetWriteDeadline(time.Now().Add(writeWait))
       if !ok {
-        // The broadcast closed the channel.
+        // The hub closed the channel.
         c.conn.WriteMessage(websocket.CloseMessage, []byte{})
         return
       }
@@ -106,8 +110,8 @@ func (c *Client) BroadcastListener() {
       if err != nil {
         return
       }
-      w.Write([]byte(message.String()))
-      fmt.Println(message.String())
+
+      w.Write(message)
 
       if err := w.Close(); err != nil {
         return
@@ -120,3 +124,4 @@ func (c *Client) BroadcastListener() {
     }
   }
 }
+

@@ -1,13 +1,13 @@
-package client 
+package client
 
 import (
-  "net/http"
-  "log"
-  "github.com/lehnenb/go_programming_language/ws_chat/broadcast"
+	"fmt"
+	"log"
+	"net/http"
 )
 
-// serveWs handles websocket requests from the peer.
-func serveWs(broadcast *broadcast.Broadcast, w http.ResponseWriter, r *http.Request) {
+// ServeClient handles websocket requests from the peer.
+func ServeClient(broadcast genericBroadcast, w http.ResponseWriter, r *http.Request) {
   conn, err := upgrader.Upgrade(w, r, nil)
 
   if err != nil {
@@ -15,9 +15,18 @@ func serveWs(broadcast *broadcast.Broadcast, w http.ResponseWriter, r *http.Requ
     return
   }
 
-  client := newClient(broadcast, conn)
-  client.broadcast.RegisterClient(client)
+  client := &Client{broadcast: broadcast, conn: conn}
+  err = client.broadcast.RegisterClient(client)
 
-  go client.BroadcastListener() 
-  go client.ClientListener()
+  if err != nil {
+    fmt.Println(err)
+    client.broadcast.UnregisterClient(client)
+    client.conn.Close()
+    return
+  }
+
+  // Allow collection of memory referenced by the caller by doing all work in
+  // new goroutines.
+  go client.writePump()
+  go client.readPump()
 }
